@@ -1,0 +1,38 @@
+# Win Desktop Switcher - config
+
+[display]
+# instant   - мгновенно (<50 мс)
+# indicator - мгновенно + всплывающий badge "2/5"
+# overlay   - своя анимация-оверлей
+# system    - системная анимация Windows 11
+mode = "overlay"
+
+[animation]
+# Длительность overlay-анимации (мс). Новые анимации (fade/slide/zoom/blur/...)
+# пока настраиваются в mvp/animations.html — когда выберешь, реализую в Rust.
+duration_ms = 300
+# linear | ease-out | cubic-bezier | spring
+easing = "cubic-bezier"
+
+[wheel]
+# Сколько delta нужно накопить для одного переключения
+threshold = 120
+# Минимальный интервал между переключениями (мс)
+cooldown_ms = 150
+# Насколько растёт threshold при быстром прокручивании (0..1)
+velocity_damping = 0.4
+# Высота "горячей зоны" внизу экрана (px) — крути колесо в этой полоске БЕЗ Win
+# 0 = выключить hot-zone
+hot_zone_height_px = 60
+
+[touch]
+swipe_distance_px = 500
+swipe_steps = 18
+step_delay_ms = 8
+easing = "ease-in"
+hold_before_ms = 8
+hold_after_ms = 20
+
+[navigation]
+# Циклично ли (true: с последнего на первый)
+wrap = true
