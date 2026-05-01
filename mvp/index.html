@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win Desktop Switcher — Калибратор</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --panel: rgba(20, 20, 28, 0.78);
+  --panel-solid: #14141c;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --fg: #e6e6f0;
+  --fg-dim: #8a8aa0;
+  --fg-faint: #555568;
+  --accent: #6366f1;
+  --accent-2: #a855f7;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Inter', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  perspective: 2000px;
+}
+
+.track {
+  display: flex;
+  width: 500vw;
+  height: 100vh;
+  will-change: transform;
+}
+
+.desktop {
+  flex: 0 0 100vw;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.desktop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.08), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(255,255,255,0.05), transparent 40%);
+  pointer-events: none;
+}
+
+.desktop[data-id="1"] { background: linear-gradient(135deg, #1e3a8a 0%, #4338ca 100%); }
+.desktop[data-id="2"] { background: linear-gradient(135deg, #064e3b 0%, #047857 100%); }
+.desktop[data-id="3"] { background: linear-gradient(135deg, #831843 0%, #be123c 100%); }
+.desktop[data-id="4"] { background: linear-gradient(135deg, #78350f 0%, #c2410c 100%); }
+.desktop[data-id="5"] { background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 100%); }
+
+.desktop-num {
+  font-size: clamp(180px, 26vw, 320px);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  opacity: 0.18;
+  line-height: 0.9;
+  position: relative;
+  text-shadow: 0 8px 40px rgba(0,0,0,0.3);
+}
+
+.desktop-name {
+  font-size: 28px;
+  font-weight: 600;
+  opacity: 0.85;
+  letter-spacing: -0.01em;
+  position: relative;
+}
+
+.desktop-tip {
+  font-size: 13px;
+  opacity: 0.55;
+  letter-spacing: 0.02em;
+  position: relative;
+}
+
+/* HUD blocks */
+.hud {
+  position: fixed;
+  background: var(--panel);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  z-index: 100;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  transition: opacity .25s, transform .25s;
+}
+
+.hud-left {
+  top: 16px;
+  left: 16px;
+  width: 280px;
+}
+
+.hud-right {
+  top: 16px;
+  right: 16px;
+  width: 320px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.hud-right::-webkit-scrollbar {
+  width: 6px;
+}
+.hud-right::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.hud h3 {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--fg-dim);
+  margin-bottom: 10px;
+}
+
+.hud h3:not(:first-child) {
+  margin-top: 16px;
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.metric:last-of-type {
+  border-bottom: none;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.metric-value {
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.metric-value.accent { color: var(--accent); }
+.metric-value.success { color: var(--success); }
+.metric-value.warning { color: var(--warning); }
+
+.bar {
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width .04s linear;
+  border-radius: 2px;
+}
+
+.bar-fill.cooldown {
+  background: linear-gradient(90deg, var(--warning), var(--danger));
+}
+
+/* Sliders */
+.control {
+  margin-bottom: 14px;
+}
+
+.control:last-child { margin-bottom: 0; }
+
+.control-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.control-label {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.control-value {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="range"] {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: grab;
+  transition: transform .12s, background .12s;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  background: var(--accent-2);
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.35);
+}
+
+select {
+  width: 100%;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--fg);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color .15s, background .15s;
+}
+
+select:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+select:focus {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+/* Presets bar */
+.presets {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  background: var(--panel);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  z-index: 100;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+
+.btn {
+  padding: 8px 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .08s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--border-strong);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn.primary:hover {
+  background: var(--accent-2);
+  border-color: transparent;
+}
+
+/* Indicator badge */
+.indicator {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  padding: 18px 32px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 200;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%) scale(0.9);
+}
+
+.indicator.show {
+  animation: indicatorShow 220ms cubic-bezier(0.2, 0.9, 0.1, 1) forwards;
+}
+
+@keyframes indicatorShow {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+  25%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  75%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.05); }
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 10px 20px;
+  background: var(--success);
+  color: #00120a;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s, transform .25s;
+  z-index: 300;
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Hint */
+.hint {
+  position: fixed;
+  bottom: 18px;
+  left: 16px;
+  font-size: 11px;
+  color: var(--fg-faint);
+  text-align: left;
+  line-height: 1.8;
+  z-index: 50;
+  pointer-events: none;
+  background: rgba(10, 10, 15, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  border-bottom-width: 2px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+
+/* Top dots */
+.dots {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 100;
+  padding: 9px 16px;
+  background: var(--panel);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  transition: all .25s cubic-bezier(0.2, 0.9, 0.1, 1);
+}
+
+.dot.active {
+  background: #fff;
+  width: 28px;
+  border-radius: 4px;
+}
+
+/* Scroll lock */
+body { overscroll-behavior: none; }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="track" id="track">
+    <div class="desktop" data-id="1">
+      <div class="desktop-num">1</div>
+      <div class="desktop-name">Рабочий стол</div>
+      <div class="desktop-tip">Главное рабочее пространство</div>
+    </div>
+    <div class="desktop" data-id="2">
+      <div class="desktop-num">2</div>
+      <div class="desktop-name">Браузер</div>
+      <div class="desktop-tip">Вкладки и поиск</div>
+    </div>
+    <div class="desktop" data-id="3">
+      <div class="desktop-num">3</div>
+      <div class="desktop-name">Код</div>
+      <div class="desktop-tip">VS Code и терминалы</div>
+    </div>
+    <div class="desktop" data-id="4">
+      <div class="desktop-num">4</div>
+      <div class="desktop-name">Музыка</div>
+      <div class="desktop-tip">Фоновые задачи</div>
+    </div>
+    <div class="desktop" data-id="5">
+      <div class="desktop-num">5</div>
+      <div class="desktop-name">Игры</div>
+      <div class="desktop-tip">Развлечения</div>
+    </div>
+  </div>
+  <div class="indicator" id="indicator">1 / 5</div>
+</div>
+
+<div class="dots" id="dots">
+  <div class="dot active"></div>
+  <div class="dot"></div>
+  <div class="dot"></div>
+  <div class="dot"></div>
+  <div class="dot"></div>
+</div>
+
+<aside class="hud hud-left">
+  <h3>Состояние</h3>
+  <div class="metric">
+    <span class="metric-label">Стол</span>
+    <span class="metric-value accent" id="m-current">1 / 5</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Input latency</span>
+    <span class="metric-value" id="m-latency">— мс</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Animation FPS</span>
+    <span class="metric-value" id="m-fps">—</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Switches/sec</span>
+    <span class="metric-value" id="m-switches">0</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Всего</span>
+    <span class="metric-value" id="m-total">0</span>
+  </div>
+
+  <h3>Wheel accumulator</h3>
+  <div class="metric">
+    <span class="metric-label">Накоплено</span>
+    <span class="metric-value" id="m-acc">0 / 120</span>
+  </div>
+  <div class="bar">
+    <div class="bar-fill" id="m-acc-bar" style="width: 0%"></div>
+  </div>
+
+  <h3>Cooldown</h3>
+  <div class="metric">
+    <span class="metric-label">Осталось</span>
+    <span class="metric-value" id="m-cd">0 мс</span>
+  </div>
+  <div class="bar">
+    <div class="bar-fill cooldown" id="m-cd-bar" style="width: 0%"></div>
+  </div>
+
+  <h3>Burst</h3>
+  <div class="metric">
+    <span class="metric-label">Threshold (eff.)</span>
+    <span class="metric-value" id="m-eff-thr">120</span>
+  </div>
+  <div class="metric">
+    <span class="metric-label">Burst count</span>
+    <span class="metric-value" id="m-burst">0</span>
+  </div>
+</aside>
+
+<aside class="hud hud-right">
+  <h3>Режим отображения</h3>
+  <div class="control">
+    <select id="mode">
+      <option value="instant">Instant — мгновенно (&lt;50мс)</option>
+      <option value="indicator" selected>Indicator — мгновенно + badge</option>
+      <option value="overlay">Overlay — своя анимация</option>
+      <option value="system">System — стиль Win11 (~400мс)</option>
+    </select>
+  </div>
+
+  <h3>Анимация (overlay/system)</h3>
+  <div class="control">
+    <div class="control-head">
+      <span class="control-label">Длительность</span>
+      <span class="control-value"><span id="v-duration">250</span> мс</span>
+    </div>
+    <input type="range" id="duration" min="0" max="600" step="10" value="250">
+  </div>
+
+  <div class="control">
+    <div class="control-head">
+      <span class="control-label">Easing</span>
+    </div>
+    <select id="easing">
+      <option value="linear">Linear</option>
+      <option value="ease-out">Ease-out (cubic)</option>
+      <option value="cubic-bezier" selected>Cubic-bezier(.2,.9,.1,1)</option>
+      <option value="spring">Spring</option>
+    </select>
+  </div>
+
+  <h3>Колесо мыши</h3>
+
+  <div class="control">
+    <div class="control-head">
+      <span class="control-label">Threshold (delta)</span>
+      <span class="control-value"><span id="v-threshold">120</span></span>
+    </div>
+    <input type="range" id="threshold" min="40" max="360" step="20" value="120">
+  </div>
+
+  <div class="control">
+    <div class="control-head">
+      <span class="control-label">Cooldown</span>
+      <span class="control-value"><span id="v-cooldown">100</span> мс</span>
+    </div>
+    <input type="range" id="cooldown" min="50" max="400" step="10" value="100">
+  </div>
+
+  <div class="control">
+    <div class="control-head">
+      <span class="control-label">Velocity damping</span>
+      <span class="control-value"><span id="v-damping">0.30</span></span>
+    </div>
+    <input type="range" id="damping" min="0" max="1" step="0.05" value="0.3">
+  </div>
+
+  <h3>Навигация</h3>
+  <div class="control">
+    <div class="control-head">
+      <span class="control-label">Wrap (циклично)</span>
+      <span class="control-value" id="v-wrap">да</span>
+    </div>
+    <input type="range" id="wrap" min="0" max="1" step="1" value="1">
+  </div>
+
+  <div class="control">
+    <div class="control-head">
+      <span class="control-label">Suppress wheel вне Win</span>
+      <span class="control-value" id="v-suppress">нет</span>
+    </div>
+    <input type="range" id="suppress" min="0" max="1" step="1" value="0">
+  </div>
+</aside>
+
+<div class="hint">
+  <div><kbd>←</kbd> <kbd>→</kbd> или <kbd>колесо</kbd> — переключение</div>
+  <div><kbd>1</kbd>…<kbd>5</kbd> — прямой переход</div>
+  <div>В финале добавляется <kbd>Win</kbd> к каждому хоткею</div>
+</div>
+
+<footer class="presets">
+  <button class="btn" data-preset="instant">⚡ Мгновенно</button>
+  <button class="btn" data-preset="fast">🚀 Быстро</button>
+  <button class="btn" data-preset="smooth">🌊 Плавно</button>
+  <button class="btn" data-preset="mac">🍎 Mac-like</button>
+  <button class="btn" data-preset="reset">↺ Сброс</button>
+  <button class="btn primary" id="btn-export">📋 Export</button>
+</footer>
+
+<div class="toast" id="toast">Скопировано</div>
+
+<script>
+'use strict';
+
+// ============ STATE ============
+const state = {
+  current: 0,
+  total: 5,
+  // params
+  mode: 'indicator',
+  duration: 250,
+  easing: 'cubic-bezier',
+  threshold: 120,
+  cooldown: 100,
+  damping: 0.3,
+  wrap: 1,
+  suppress: 0,
+  // wheel runtime
+  accumulator: 0,
+  lastEventAt: 0,
+  lastSwitchAt: 0,
+  burstCount: 0,
+  effThreshold: 120,
+  // animation runtime
+  animating: false,
+  animStart: 0,
+  animFrom: 0,
+  animTo: 0,
+  // metrics
+  lastInputAt: 0,
+  lastLatency: 0,
+  switchTimes: [],
+  totalSwitches: 0,
+  frameCount: 0,
+  lastFpsAt: performance.now(),
+  fps: 0,
+};
+
+// ============ DOM ============
+const $ = id => document.getElementById(id);
+const track = $('track');
+const indicator = $('indicator');
+const dots = [...document.querySelectorAll('.dot')];
+
+// ============ EASING ============
+function cubicBezier(p1x, p1y, p2x, p2y) {
+  return function(t) {
+    const cx = 3 * p1x;
+    const bx = 3 * (p2x - p1x) - cx;
+    const ax = 1 - cx - bx;
+    const cy = 3 * p1y;
+    const by = 3 * (p2y - p1y) - cy;
+    const ay = 1 - cy - by;
+    let x = t;
+    for (let i = 0; i < 8; i++) {
+      const f = ((ax * x + bx) * x + cx) * x - t;
+      if (Math.abs(f) < 1e-5) break;
+      const df = (3 * ax * x + 2 * bx) * x + cx;
+      if (Math.abs(df) < 1e-6) break;
+      x -= f / df;
+    }
+    return ((ay * x + by) * x + cy) * x;
+  };
+}
+
+const easings = {
+  'linear': t => t,
+  'ease-out': t => 1 - Math.pow(1 - t, 3),
+  'cubic-bezier': cubicBezier(0.2, 0.9, 0.1, 1),
+  'spring': t => 1 - Math.exp(-6 * t) * Math.cos(8 * t),
+};
+
+// ============ SWITCHING ============
+function clampTarget(target) {
+  if (state.wrap) {
+    return ((target % state.total) + state.total) % state.total;
+  }
+  return Math.max(0, Math.min(state.total - 1, target));
+}
+
+function switchTo(target, srcEventTime) {
+  target = clampTarget(target);
+  if (target === state.current && !state.animating) return;
+
+  // metrics
+  if (srcEventTime) {
+    state.lastLatency = performance.now() - srcEventTime;
+  }
+  state.totalSwitches++;
+  state.switchTimes.push(performance.now());
+
+  const fromVisual = getVisualPos();
+  state.current = target;
+
+  // dots
+  dots.forEach((d, i) => d.classList.toggle('active', i === target));
+
+  if (state.mode === 'instant' || state.mode === 'indicator') {
+    state.animating = false;
+    track.style.transition = 'none';
+    track.style.transform = `translateX(${-target * 100}vw)`;
+    if (state.mode === 'indicator') showIndicator(target);
+  } else if (state.mode === 'overlay') {
+    state.animating = true;
+    state.animStart = performance.now();
+    state.animFrom = fromVisual;
+    state.animTo = target;
+    track.style.transition = 'none';
+  } else if (state.mode === 'system') {
+    // imitates Win11 system anim — fixed 400ms ease-out
+    state.animating = false;
+    track.style.transition = `transform 400ms cubic-bezier(0.16, 1, 0.3, 1)`;
+    track.style.transform = `translateX(${-target * 100}vw)`;
+  }
+}
+
+function getVisualPos() {
+  if (state.animating) {
+    const t = Math.min(1, (performance.now() - state.animStart) / state.duration);
+    const eased = easings[state.easing](t);
+    return state.animFrom + (state.animTo - state.animFrom) * eased;
+  }
+  return state.current;
+}
+
+function stepAnim(now) {
+  if (!state.animating) return;
+  const t = state.duration > 0 ? Math.min(1, (now - state.animStart) / state.duration) : 1;
+  const eased = easings[state.easing](t);
+  const pos = state.animFrom + (state.animTo - state.animFrom) * eased;
+  track.style.transform = `translateX(${-pos * 100}vw)`;
+  if (t >= 1) state.animating = false;
+}
+
+function showIndicator(target) {
+  indicator.textContent = `${target + 1} / ${state.total}`;
+  indicator.classList.remove('show');
+  void indicator.offsetWidth;
+  indicator.classList.add('show');
+}
+
+// ============ WHEEL ============
+function onWheel(e) {
+  if (state.suppress) e.preventDefault();
+  const delta = e.deltaY;
+  if (Math.abs(delta) < 1) return;
+  e.preventDefault();
+
+  const eventTime = performance.now();
+  const now = eventTime;
+
+  // during cooldown — drop event entirely (no accumulation)
+  if (now - state.lastSwitchAt < state.cooldown) return;
+
+  // velocity damping (raises threshold during fast bursts)
+  if (now - state.lastEventAt < 50) {
+    state.burstCount++;
+  } else {
+    state.burstCount = 0;
+  }
+  state.effThreshold = state.threshold * (1 + state.damping * state.burstCount);
+
+  // direction reversal — reset accumulator
+  if (state.accumulator !== 0 && Math.sign(state.accumulator) !== Math.sign(delta)) {
+    state.accumulator = 0;
+  }
+
+  state.accumulator += delta;
+  state.lastEventAt = now;
+
+  // single switch per threshold reached (no multi-jump)
+  if (Math.abs(state.accumulator) >= state.effThreshold) {
+    const direction = Math.sign(state.accumulator);
+    state.accumulator = 0;
+    state.lastSwitchAt = now;
+    switchTo(state.current + direction, eventTime);
+  }
+}
+
+// ============ KEYBOARD ============
+function onKey(e) {
+  const eventTime = performance.now();
+  const now = eventTime;
+
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    // apply cooldown for held arrows (matches wheel rhythm)
+    if (e.repeat && now - state.lastSwitchAt < state.cooldown) return;
+    state.lastSwitchAt = now;
+    const dir = e.key === 'ArrowLeft' ? -1 : 1;
+    switchTo(state.current + dir, eventTime);
+  } else if (e.key >= '1' && e.key <= '5') {
+    e.preventDefault();
+    if (e.repeat) return;
+    switchTo(parseInt(e.key, 10) - 1, eventTime);
+  }
+}
+
+// ============ SLIDERS ============
+const sliderConfig = {
+  duration:  { fmt: v => v },
+  threshold: { fmt: v => v },
+  cooldown:  { fmt: v => v },
+  damping:   { fmt: v => v.toFixed(2) },
+  wrap:      { fmt: v => v ? 'да' : 'нет' },
+  suppress:  { fmt: v => v ? 'да' : 'нет' },
+};
+
+Object.keys(sliderConfig).forEach(id => {
+  const el = $(id);
+  el.addEventListener('input', () => {
+    const v = parseFloat(el.value);
+    state[id] = v;
+    const out = $('v-' + id);
+    if (out) out.textContent = sliderConfig[id].fmt(v);
+  });
+});
+
+$('mode').addEventListener('change', e => {
+  state.mode = e.target.value;
+  state.animating = false;
+  track.style.transition = 'none';
+  track.style.transform = `translateX(${-state.current * 100}vw)`;
+});
+
+$('easing').addEventListener('change', e => {
+  state.easing = e.target.value;
+});
+
+// ============ PRESETS ============
+const presets = {
+  instant: { mode: 'instant',   duration: 0,   easing: 'linear',       threshold: 80,  cooldown: 80,  damping: 0.20, wrap: 1, suppress: 0 },
+  fast:    { mode: 'indicator', duration: 150, easing: 'ease-out',     threshold: 100, cooldown: 100, damping: 0.30, wrap: 1, suppress: 0 },
+  smooth:  { mode: 'overlay',   duration: 280, easing: 'cubic-bezier', threshold: 120, cooldown: 150, damping: 0.40, wrap: 1, suppress: 0 },
+  mac:     { mode: 'overlay',   duration: 350, easing: 'spring',       threshold: 140, cooldown: 180, damping: 0.50, wrap: 0, suppress: 0 },
+  reset:   { mode: 'indicator', duration: 250, easing: 'cubic-bezier', threshold: 120, cooldown: 100, damping: 0.30, wrap: 1, suppress: 0 },
+};
+
+function applyPreset(p) {
+  Object.assign(state, p);
+  $('mode').value = p.mode;
+  $('easing').value = p.easing;
+  for (const id of Object.keys(sliderConfig)) {
+    const el = $(id);
+    if (el && p[id] !== undefined) {
+      el.value = p[id];
+      const out = $('v-' + id);
+      if (out) out.textContent = sliderConfig[id].fmt(p[id]);
+    }
+  }
+}
+
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = presets[btn.dataset.preset];
+    if (p) applyPreset(p);
+  });
+});
+
+// ============ EXPORT ============
+$('btn-export').addEventListener('click', async () => {
+  const cfg = {
+    display: { mode: state.mode },
+    animation: {
+      duration_ms: state.duration,
+      easing: state.easing,
+    },
+    wheel: {
+      threshold: state.threshold,
+      cooldown_ms: state.cooldown,
+      velocity_damping: state.damping,
+    },
+    navigation: {
+      wrap: state.wrap === 1,
+    },
+  };
+  const json = JSON.stringify(cfg, null, 2);
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(json);
+    copied = true;
+  } catch {}
+  showToast(copied ? 'Скопировано в буфер ✓' : 'Смотри в консоль (F12)');
+  console.log('=== EXPORTED CONFIG (paste this back) ===');
+  console.log(json);
+  console.log('=========================================');
+});
+
+function showToast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 1500);
+}
+
+// ============ MAIN LOOP ============
+function loop(now) {
+  stepAnim(now);
+
+  state.frameCount++;
+  if (now - state.lastFpsAt > 500) {
+    state.fps = Math.round((state.frameCount * 1000) / (now - state.lastFpsAt));
+    state.frameCount = 0;
+    state.lastFpsAt = now;
+    $('m-fps').textContent = state.fps;
+  }
+
+  $('m-current').textContent = `${state.current + 1} / ${state.total}`;
+  $('m-latency').textContent = state.lastLatency ? `${state.lastLatency.toFixed(1)} мс` : '— мс';
+  $('m-total').textContent = state.totalSwitches;
+
+  // rolling switches/sec
+  const cutoff = now - 1000;
+  while (state.switchTimes.length && state.switchTimes[0] < cutoff) state.switchTimes.shift();
+  $('m-switches').textContent = state.switchTimes.length;
+
+  // accumulator
+  const accAbs = Math.abs(state.accumulator);
+  $('m-acc').textContent = `${Math.round(state.accumulator)} / ${Math.round(state.effThreshold)}`;
+  $('m-acc-bar').style.width = Math.min(100, (accAbs / state.effThreshold) * 100) + '%';
+
+  // accumulator decay
+  if (now - state.lastEventAt > 300 && state.accumulator !== 0) {
+    state.accumulator = 0;
+    state.burstCount = 0;
+    state.effThreshold = state.threshold;
+  }
+
+  // cooldown bar
+  const remaining = Math.max(0, state.cooldown - (now - state.lastSwitchAt));
+  $('m-cd').textContent = `${Math.round(remaining)} мс`;
+  $('m-cd-bar').style.width = (remaining / state.cooldown) * 100 + '%';
+
+  // burst info
+  $('m-eff-thr').textContent = Math.round(state.effThreshold);
+  $('m-burst').textContent = state.burstCount;
+
+  requestAnimationFrame(loop);
+}
+
+// ============ INIT ============
+track.style.transform = `translateX(0)`;
+window.addEventListener('wheel', onWheel, { passive: false });
+window.addEventListener('keydown', onKey);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
